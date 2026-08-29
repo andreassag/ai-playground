@@ -5,15 +5,21 @@ description = "A simple PyTorch pipeline for training a model on the MNIST datas
 readme = "README.md"
 requires-python = ">=3.10,<3.12"
 dependencies = [
+  "setuptools",
   "torch==2.7.1",
   "torchvision==0.22.1",
+  "torchaudio==2.7.1",
   "tensorboard",
   "ipykernel",
   "ipywidgets",
   "IProgress",
   "matplotlib",
   "pandas",
-  "tqdm",
+  "scipy",
+  "scikit-learn",
+  "seaborn",
+  "torchmetrics",
+  "safetensors>=0.8.0",
 ]
 
 [[tool.uv.index]]
@@ -22,10 +28,10 @@ url = "https://download.pytorch.org/whl/cu118"
 explicit = true
 
 [[tool.uv.index]]
-name = "pytorch-xla"
 url = "https://storage.googleapis.com/tpu-pytorch/wheels/"
 explicit = true
 
 [tool.uv.sources]
 torch = { index = "pytorch-cu118" }
 torchvision = { index = "pytorch-cu118" }
+torchaudio = { index = "pytorch-cu118" }

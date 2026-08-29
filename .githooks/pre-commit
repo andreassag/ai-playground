@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+set -e
+
+# Determine repository root
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "$REPO_ROOT"
+
+# Resolve python interpreter
+if [ -f ".venv/bin/python3" ]; then
+    PYTHON=".venv/bin/python3"
+elif command -v uv >/dev/null 2>&1; then
+    PYTHON="uv run python"
+else
+    PYTHON="python3"
+fi
+
+# Resolve ruff binary
+if command -v ruff >/dev/null 2>&1; then
+    RUFF="ruff"
+elif [ -f ".venv/bin/ruff" ]; then
+    RUFF=".venv/bin/ruff"
+elif command -v uv >/dev/null 2>&1; then
+    RUFF="uv run ruff"
+else
+    echo "Warning: ruff not found. Skipping code formatting."
+    RUFF=""
+fi
+
+# Get list of staged files (Added, Copied, Modified)
+STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACM)
+
+if [ -z "$STAGED_FILES" ]; then
+    exit 0
+fi
+
+# 1. Strip outputs from staged Jupyter Notebooks (.ipynb)
+STAGED_NOTEBOOKS=()
+for file in $STAGED_FILES; do
+    if [[ "$file" == *.ipynb ]] && [ -f "$file" ]; then
+        STAGED_NOTEBOOKS+=("$file")
+    fi
+done
+
+if [ ${#STAGED_NOTEBOOKS[@]} -gt 0 ]; then
+    echo "🧹 Stripping Jupyter notebook outputs..."
+    $PYTHON -c "
+import sys
+import json
+
+for path in sys.argv[1:]:
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            nb = json.load(f)
+        
+        modified = False
+        for cell in nb.get('cells', []):
+            if cell.get('cell_type') == 'code':
+                if cell.get('outputs') != []:
+                    cell['outputs'] = []
+                    modified = True
+                if cell.get('execution_count') is not None:
+                    cell['execution_count'] = None
+                    modified = True
+                if 'execution' in cell.get('metadata', {}):
+                    del cell['metadata']['execution']
+                    modified = True
+        
+        if modified:
+            with open(path, 'w', encoding='utf-8') as f:
+                json.dump(nb, f, indent=1)
+                f.write('\n')
+            print(f'  ✓ Stripped outputs from {path}')
+    except Exception as e:
+        print(f'  ✗ Failed to process {path}: {e}', file=sys.stderr)
+" "${STAGED_NOTEBOOKS[@]}"
+fi
+
+# 2. Run Ruff format on staged files
+if [ -n "$RUFF" ]; then
+    FORMAT_TARGETS=()
+    for file in $STAGED_FILES; do
+        if [[ "$file" == *.py || "$file" == *.ipynb ]] && [ -f "$file" ]; then
+            FORMAT_TARGETS+=("$file")
+        fi
+    done
+
+    if [ ${#FORMAT_TARGETS[@]} -gt 0 ]; then
+        echo "⚡ Running Ruff format..."
+        $RUFF format "${FORMAT_TARGETS[@]}"
+    fi
+fi
+
+# 3. Re-stage modified files
+for file in $STAGED_FILES; do
+    if [[ "$file" == *.py || "$file" == *.ipynb ]] && [ -f "$file" ]; then
+        git add "$file"
+    fi
+done
+
+echo "✅ Pre-commit hook completed."
